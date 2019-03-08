@@ -23,19 +23,17 @@ class RLBotEnv(gym.Env):
             ))
         self.observation_space = spaces.Box(low=np.array([-1.,-1]), high=np.array([1,1]), dtype=np.float)
         self.manager = runner.main(gym=True)
-        self.q = Queue()
-        self.game_thread = threading.Thread(target=self.manager.infinite_loop, args=(self.q,))
+        self.game_thread = threading.Thread(target=self.manager.infinite_loop)
         self.game_thread.start()
+        
 
     def step(self, action):
-        # TODO: action
-        # self.agent.act(action)
+        self.act(action)
         obs = self._get_obs()
         print(obs)
 
         reward = 0
         scored = False
-        obs = None
 
         return obs, reward, scored, {}
 
@@ -49,6 +47,18 @@ class RLBotEnv(gym.Env):
         packet = self.manager.agent_state_queue.get()
         obs = [ packet.game_cars[0].physics.location.x,  packet.game_cars[0].physics.location.y]
         return obs
+
+    def act(self, action):
+        controller_state = SimpleControllerState()
+        controller_state.throttle = action[0][0]
+        controller_state.steer = action[0][1]
+        controller_state.pitch = action[0][2]
+        controller_state.yaw = action[0][3]
+        controller_state.roll = action[0][4]
+        controller_state.jump =action[1]
+        controller_state.boost = action[2]
+        controller_state.handbrake = action[3]
+        self.manager.agent_action_queue.put(controller_state)
 
 
 class Vector2:
@@ -85,6 +95,7 @@ class GymAgent(BaseAgent):
         self.controller_state = SimpleControllerState()
 
     def get_output(self, packet: GameTickPacket) -> SimpleControllerState:
+        # All stuff here does not matter anymore, controller state is handled through the gym environment
         ball_location = Vector2(packet.game_ball.physics.location.x, packet.game_ball.physics.location.y)
 
         self.obs = [packet.game_ball.physics.location.x, packet.game_ball.physics.location.y]

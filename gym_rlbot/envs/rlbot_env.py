@@ -7,8 +7,10 @@ from gym import spaces
 from rlbot import runner
 from rlbot.setup_manager import SetupManager
 
-import multiprocessing as mp
+import threading
+from multiprocessing import Queue
 import numpy as np
+
 
 class RLBotEnv(gym.Env):
     def __init__(self):
@@ -20,17 +22,20 @@ class RLBotEnv(gym.Env):
             spaces.Discrete(2)
             ))
         self.observation_space = spaces.Box(low=np.array([-1.,-1]), high=np.array([1,1]), dtype=np.float)
-        manager = runner.main(gym=True)        
-        p = mp.Process(target=manager.infinite_loop)
-        print(manager.infinite_loop)
-        p.start()
-
+        self.manager = runner.main(gym=True)
+        self.q = Queue()
+        self.game_thread = threading.Thread(target=self.manager.infinite_loop, args=(self.q,))
+        self.game_thread.start()
 
     def step(self, action):
-        self.agent.act(action)
-        obs = self.agent._get_obs()
+        # TODO: action
+        # self.agent.act(action)
+        obs = self._get_obs()
+        print(obs)
+
         reward = 0
         scored = False
+        obs = None
 
         return obs, reward, scored, {}
 
@@ -39,6 +44,11 @@ class RLBotEnv(gym.Env):
   
     def render(self, mode='human', close=False):
         pass
+
+    def _get_obs(self):
+        packet = self.manager.agent_state_queue.get()
+        obs = [ packet.game_cars[0].physics.location.x,  packet.game_cars[0].physics.location.y]
+        return obs
 
 
 class Vector2:
@@ -81,7 +91,7 @@ class GymAgent(BaseAgent):
         
         
         my_car = packet.game_cars[self.index]
-        self.controller_state.throttle = 0.0
+        self.controller_state.throttle = 1.0
         self.controller_state.steer = 0.0
 
         draw_debug(self.renderer, my_car, packet.game_ball, "test")

@@ -16,7 +16,7 @@ class RLBotEnv(gym.Env):
     def __init__(self):
         super(RLBotEnv, self).__init__()
         self.action_space = spaces.Tuple((
-            spaces.Box(low=np.array([-1., -1., -1., -1., -1.]), high=np.array([1., 1., 1., 1., 1.]), dtype=np.float), 
+            spaces.Box(low=np.array([-1., -1., -1., -1., -1.]), high=np.array([1., 1., 1., 1., 1.]), dtype=np.float),
             spaces.Discrete(2),
             spaces.Discrete(2),
             spaces.Discrete(2)
@@ -24,6 +24,8 @@ class RLBotEnv(gym.Env):
         self.manager = runner.main(gym=True)
         self.game_thread = threading.Thread(target=self.manager.infinite_loop)
         self.game_thread.start()
+
+        self.score = 0
 
         self_location = spaces.Box(low=np.array([-4096., -5120., 0.]),       high=np.array([4096.,5120.,2044.]),      dtype=np.float)
         self_rotation = spaces.Box(low=np.array([-np.pi, -np.pi, -np.pi]), high=np.array([np.pi, np.pi, np.pi]), dtype=np.float)
@@ -38,10 +40,10 @@ class RLBotEnv(gym.Env):
         ball_angular_velocity = spaces.Box(low=np.array([-1., -1., -1.]), high=np.array([1., 1., 1.]), dtype=np.float)
 
         self.observation_space = spaces.Tuple((
-            self_location, 
-            self_rotation, 
-            self_velocity, 
-            # self_angular_velocity, 
+            self_location,
+            self_rotation,
+            self_velocity,
+            # self_angular_velocity,
             has_wheel_contact,
             jumped,
             boost,
@@ -50,21 +52,26 @@ class RLBotEnv(gym.Env):
             ball_velocity,
             # ball_angular_velocity,
         ))
-        
+
 
     def step(self, action):
         self.act(action)
-        obs = self._get_obs()
+        obs, scored = self._get_obs()
 
-        reward = 0
-        scored = False
+        if scored:
+            reward = 0
+            self.score += 1
+        else:
+            reward = -1
 
         return obs, reward, scored, {}
 
     def reset(self):
-        obs = self._get_obs()
+        self.manager.reset_game()
+        self.act([0]*8)
+        obs, _ = self._get_obs()
         return obs
-  
+
     def render(self, mode='human', close=False):
         pass
 
@@ -88,7 +95,9 @@ class RLBotEnv(gym.Env):
             *ball_rotation,
             *ball_velocity
         ]
-        return obs
+
+        scored = packet.teams[0].score > self.score
+        return obs, scored
 
     def act(self, action):
         controller_state = SimpleControllerState()
@@ -141,8 +150,8 @@ class GymAgent(BaseAgent):
         ball_location = Vector2(packet.game_ball.physics.location.x, packet.game_ball.physics.location.y)
 
         self.obs = [packet.game_ball.physics.location.x, packet.game_ball.physics.location.y]
-        
-        
+
+
         my_car = packet.game_cars[self.index]
         self.controller_state.throttle = 1.0
         self.controller_state.steer = 0.0
@@ -151,20 +160,7 @@ class GymAgent(BaseAgent):
 
         return self.controller_state
 
-    def _get_obs(self):
-        return self.obs
 
-    def act(self, action):
-        self.controller_state.throttle = action[0][0]
-        self.controller_state.steer = action[0][1]
-        self.controller_state.pitch = action[0][2]
-        self.controller_state.yaw = action[0][3]
-        self.controller_state.roll = action[0][4]
-        self.controller_state.jump =action[1]
-        self.controller_state.boost = action[2]
-        self.controller_state.handbrake = action[3]
-
- 
 def get_car_facing_vector(car):
     pitch = float(car.physics.rotation.pitch)
     yaw = float(car.physics.rotation.yaw)
